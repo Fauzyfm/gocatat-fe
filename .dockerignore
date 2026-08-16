@@ -1,0 +1,43 @@
+# Version Control
+.git
+.gitignore
+
+# IDE & Editor
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Build artifacts (will be rebuilt in Docker)
+build/
+
+# Platform-specific (not needed for web build)
+android/
+ios/
+macos/
+linux/
+windows/
+
+# Test
+test/
+
+# Environment files (generated at build time via ARG)
+.env
+.env.example
+
+# Documentation
+*.md
+LICENSE
+
+# Misc
+.metadata
+*.json
+!pubspec.lock
+!web/manifest.json

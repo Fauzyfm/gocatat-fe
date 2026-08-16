@@ -1,0 +1,662 @@
+{
+  "info": {
+    "_postman_id": "8778495c-92cc-4052-ac1b-5ae0b8ed1316",
+    "name": "Manajemen Keuangan API",
+    "description": "# Manajemen Keuangan API\n\nCollection ini untuk testing seluruh endpoint REST API manajemen keuangan (Go + Fiber v2 + PostgreSQL).\n\n## Cara pakai cepat\n1. Pastikan server API sudah jalan (default: `http://localhost:8080`) dan schema database (`schema.sql`) sudah dijalankan di PostgreSQL.\n2. Import collection ini ke Postman (`File > Import` lalu pilih file ini).\n3. Cek/atur variable `baseUrl` di tab **Variables** collection ini kalau server kamu tidak jalan di `localhost:8080`.\n4. Jalankan request secara berurutan dari atas ke bawah (folder **Auth** → **Profile** → **Balance** → **Transaction**). Sudah disiapkan script otomatis supaya `userID`, `balanceID`, dan `transactionID` ke-generate/ke-capture sendiri dan dipakai di request berikutnya — jadi kamu tidak perlu copy-paste ID manual.\n5. Folder **Cleanup (Opsional)** sengaja dipisah di paling bawah, isinya cuma Delete Balance — jalankan manual belakangan kalau memang mau bersihkan data test, JANGAN dijalankan di tengah alur karena transaksi yang sudah dibuat butuh balance itu masih ada (foreign key).\n\n## Penting soal Autentikasi (Cookie-based JWT)\nAPI ini **tidak** memakai header `Authorization: Bearer <token>`. Token JWT dikirim lewat **cookie** bernama `access_token` (HttpOnly) yang di-set otomatis oleh server saat request **Login** berhasil.\n\n- Kalau kamu pakai **Postman Desktop App**: cookie akan otomatis tersimpan di cookie jar Postman untuk domain `localhost`, dan otomatis ikut terkirim di request-request berikutnya ke domain yang sama. Tidak perlu setting tambahan.\n- Kalau kamu pakai **Postman Web/Cloud**: browser membatasi akses cookie lintas origin, jadi kamu perlu install & aktifkan **Postman Desktop Agent/Interceptor** dulu supaya cookie jar bisa jalan. Kalau request ke endpoint yang butuh login selalu balas `401 Unauthorized` padahal sudah Login, ini penyebab paling umum.\n- Kamu bisa cek cookie yang tersimpan lewat menu **Cookies** di bawah tombol Send (link kecil \"Cookies\" di response panel), cari domain `localhost`.\n\n## Urutan folder\n1. **Auth** — Register lalu Login (Login men-set cookie `access_token`)\n2. **Profile** — cek endpoint `/profile` untuk pastikan cookie/token kamu valid\n3. **Balance** — CRUD dompet/rekening\n4. **Transaction** — catat transaksi & lihat ringkasan\n5. **Cleanup (Opsional)** — hapus data test\n\n## Catatan penting soal keamanan (IDOR)\nBeberapa endpoint (`POST /balance`, `PUT /balance/:id`, `POST /transaction`) saat ini **masih meminta field `userID` di body request**. Idealnya `userID` itu diambil otomatis dari token/cookie login, bukan diinput manual dari body — kalau belum diperbaiki, secara teori user lain bisa memasukkan `userID` siapa saja di body. Collection ini tetap mengikuti bentuk API kamu apa adanya supaya bisa langsung dipakai testing, tapi ini sebagai pengingat kalau bagian itu masih perlu diperbaiki di kode.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "19684260"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "// Generate kredensial unik tiap kali collection ini di-run dari awal,",
+                  "// supaya tidak bentrok 'email sudah terdaftar' kalau dijalankan berulang.",
+                  "// Kalau testEmail sudah pernah di-set sebelumnya (mis. lanjut sesi lama), tidak akan di-generate ulang.",
+                  "if (!pm.collectionVariables.get('testEmail')) {",
+                  "    const ts = Date.now();",
+                  "    pm.collectionVariables.set('testUsername', 'testuser' + ts);",
+                  "    pm.collectionVariables.set('testEmail', 'testuser' + ts + '@example.com');",
+                  "    pm.collectionVariables.set('testPassword', 'RahasiaBanget123!');",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Response punya data.id, simpan sebagai userID', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json).to.have.property('data');",
+                  "    pm.expect(json.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('userID', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"Fachrul Fauzy Muzafar\",\n    \"email\": \"arul9723@gmail.com\",\n    \"password\": \"12345678\",\n    \"confirm_password\": \"12345678\",\n    \"role\": \"user\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Daftarkan user baru.\n\n**Body**\n| Field | Wajib | Keterangan |\n|---|---|---|\n| username | ya | |\n| email | ya | harus unik, kalau sudah terdaftar akan dapat error 400 |\n| password | ya | |\n| confirm_password | ya | dicek harus sama dengan `password` di service layer |\n| role | tidak | default `user` kalau dikosongkan/tidak dikirim. Nilai valid: `user`, `admin`, `super_admin` |\n\n**Response sukses (201)**\n```json\n{\n  \"success\": true,\n  \"messagge\": \"Register Berhasil\",\n  \"data\": { \"id\": 1, \"username\": \"...\", \"email\": \"...\", \"role\": \"user\", \"createdAt\": \"...\", \"updateAt\": \"...\" }\n}\n```\n> Catatan: key sukses pesan di response API ini tertulis `messagge` (typo bawaan kode, bukan `message`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 dan login berhasil', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.success).to.eql(true);",
+                  "});",
+                  "",
+                  "pm.test('Cookie access_token ter-set', function () {",
+                  "    const cookie = pm.cookies.get('access_token');",
+                  "    pm.expect(cookie).to.not.be.undefined;",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"email\": \"arul9723@gmail.com\",\n    \"password\": \"12345678\"\n}\n\n"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login dengan email & password yang sudah didaftarkan di request **Register** sebelumnya (otomatis reuse variable `testEmail`/`testPassword`).\n\nKalau berhasil, server mengirim `Set-Cookie: access_token=<JWT>` (HttpOnly, SameSite=Strict). Postman akan menyimpan cookie ini dan otomatis mengirimkannya di semua request berikutnya ke `{{baseUrl}}`.\n\n**Response sukses (201)**\n```json\n{ \"success\": true, \"messagge\": \"Login Berhasil\" }\n```\n\n**Response gagal (400)** — email/password salah, atau email belum terdaftar."
+          },
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoint pendaftaran & login. Tidak butuh cookie/token karena memang endpoint publik."
+    },
+    {
+      "name": "Profile",
+      "item": [
+        {
+          "name": "Get Profile (Me)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan cookie valid', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('user_id di profile sama dengan userID hasil Register', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(String(json.data.user_id)).to.eql(String(pm.collectionVariables.get('userID')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "profile"
+              ]
+            },
+            "description": "Mengembalikan data user_id, email, dan role yang tersimpan di dalam token JWT (cookie) yang sedang dipakai.\n\nPakai endpoint ini untuk **debugging cepat**: kalau ini balas 401, berarti cookie belum terkirim/tersimpan dengan benar (lihat catatan cookie di deskripsi collection).\n\n**Response sukses (200)**\n```json\n{\n  \"success\": true,\n  \"data\": { \"user_id\": 1, \"email\": \"...\", \"role\": \"user\" }\n}\n```\n\n**Response gagal (401)** — cookie tidak ada / token invalid / token expired."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoint untuk verifikasi identitas dari token/cookie yang sedang aktif."
+    },
+    {
+      "name": "Balance",
+      "item": [
+        {
+          "name": "Create Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 dan balance berhasil dibuat', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Simpan balanceID untuk dipakai request berikutnya', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('balanceID', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userID\": {{userID}},\n    \"wallet\": \"Uang Saku\",\n    \"type\": \"cash\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance"
+              ]
+            },
+            "description": "Membuat dompet/rekening baru.\n\n**Body**\n| Field | Wajib | Keterangan |\n|---|---|---|\n| userID | ya (lihat catatan IDOR di deskripsi collection) | harus milik user yang sedang login |\n| wallet | ya | nama dompet, bebas, mis. \"BCA\", \"Dompet Tunai\", \"GoPay\" |\n| type | ya | salah satu dari: `cash`, `nonCash` |\n| amount | ya | saldo awal, angka bulat (integer), tidak boleh negatif |\n\n**Response sukses (200)**\n```json\n{ \"success\": true, \"data\": { \"id\": 1, \"userID\": 1, \"wallet\": \"Dompet Tunai\", \"type\": \"cash\", \"amount\": 500000, ... } }\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan data berupa array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance"
+              ]
+            },
+            "description": "Mengambil semua dompet/rekening milik user yang sedang login (diambil dari cookie, bukan dari query param).\n\n**Response sukses (200)**\n```json\n{ \"success\": true, \"data\": [ { \"id\": 1, \"wallet\": \"Dompet Tunai\", ... } ] }\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Balance By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan id sesuai balanceID', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(String(json.data.id)).to.eql(String(pm.collectionVariables.get('balanceID')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/balance/{{balanceID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance",
+                "{{balanceID}}"
+              ]
+            },
+            "description": "Mengambil detail satu dompet/rekening berdasarkan ID (otomatis pakai `balanceID` hasil request **Create Balance**).\n\n**Response gagal (404)** — kalau ID tidak ditemukan (atau, tergantung status perbaikan IDOR di kode kamu, kalau balance itu bukan milik user yang sedang login)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 dan pesan sukses', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userID\": {{userID}},\n    \"wallet\": \"Uang Saku\",\n    \"type\": \"cash\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/balance/{{balanceID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance",
+                "{{balanceID}}"
+              ]
+            },
+            "description": "Update dompet/rekening berdasarkan ID.\n\n**Body**: sama seperti Create Balance (`userID`, `wallet`, `type`, `amount`).\n\n**Response sukses (200)**\n```json\n{ \"success\": true, \"messagge\": \"Balance berhasil diupdate!\" }\n```"
+          },
+          "response": []
+        }
+      ],
+      "description": "CRUD untuk dompet/rekening (balance) milik user. Semua endpoint di sini butuh cookie login (AuthRequired middleware)."
+    },
+    {
+      "name": "Transaction",
+      "item": [
+        {
+          "name": "Create Transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 dan transaksi berhasil dibuat', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Simpan transactionID untuk dipakai request berikutnya', function () {",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('id');",
+                  "    pm.collectionVariables.set('transactionID', json.data.id);",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userID\": {{userID}},\n    \"balanceID\": {{balanceID}},\n    \"type\": \"cash\",\n    \"amount\": 1000000,\n    \"category\": \"income\",\n    \"description\": \"Beli Sepatu\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transaction",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction"
+              ]
+            },
+            "description": "Mencatat transaksi baru dan otomatis mengubah saldo `balance` terkait (income = saldo bertambah, expense = saldo berkurang; ditolak kalau saldo jadi minus).\n\n**Body**\n| Field | Wajib | Keterangan |\n|---|---|---|\n| userID | ya (lihat catatan IDOR) | harus milik user yang sedang login |\n| balanceID | ya | harus balance milik user yang sama, dan sudah ada (lihat Create Balance) |\n| type | ya | `cash` atau `nonCash` — sebaiknya sama dengan `type` balance-nya |\n| amount | ya | harus > 0 |\n| category | ya | `income` (pemasukan) atau `expense` (pengeluaran) |\n| description | tidak | catatan bebas |\n\n**Coba juga**: ganti `category` jadi `expense` dengan `amount` lebih besar dari saldo balance saat ini untuk lihat validasi \"saldo tidak cukup\" dari server."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Transaction",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 dan data berupa array', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.be.an('array');",
+                  "});"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transaction?start_date=2026-08-01&end_date=2026-08-31&limit=10&page=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction"
+              ],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2026-08-01"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2026-08-31"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                },
+                {
+                  "key": "page",
+                  "value": "2"
+                }
+              ]
+            },
+            "description": "Mengambil semua transaksi milik user yang sedang login."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Transaction By ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan id sesuai transactionID', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(String(json.data.id)).to.eql(String(pm.collectionVariables.get('transactionID')));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/{{transactionID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "{{transactionID}}"
+              ]
+            },
+            "description": "Mengambil detail satu transaksi berdasarkan ID (otomatis pakai `transactionID` hasil request **Create Transaction**)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Summary",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan ada field income/expense/balance', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    const json = pm.response.json();",
+                  "    pm.expect(json.data).to.have.property('Income');",
+                  "    pm.expect(json.data).to.have.property('Expense');",
+                  "    pm.expect(json.data).to.have.property('Balance');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/summary?start_date=2026-01-01&end_date=2026-12-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2026-01-01",
+                  "description": "Format wajib: yyyy-mm-dd"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2026-12-31",
+                  "description": "Format wajib: yyyy-mm-dd"
+                }
+              ]
+            },
+            "description": "Mengambil ringkasan total income, expense, dan balance untuk user yang sedang login, difilter berdasarkan rentang tanggal.\n\n**Query param (keduanya wajib)**\n- `start_date` — format `yyyy-mm-dd`\n- `end_date` — format `yyyy-mm-dd`\n\nKalau salah satu tidak dikirim atau formatnya salah, server balas `400`.\n\n**Response sukses (200)**\n```json\n{ \"success\": true, \"data\": { \"Income\": 100000, \"Expense\": 0, \"Balance\": 100000 } }\n```"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Transaction",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"userID\": {{userID}},\n    \"balanceID\": {{balanceID}},\n    \"type\": \"cash\",\n    \"amount\": 1000000,\n    \"category\": \"income\",\n    \"description\": \"Uang masuk\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/transaction/{{transactionID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "{{transactionID}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Pencatatan transaksi (pemasukan/pengeluaran) yang terhubung ke sebuah balance. Semua endpoint butuh cookie login."
+    },
+    {
+      "name": "Cleanup (Opsional)",
+      "item": [
+        {
+          "name": "Delete Balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200 dan pesan sukses', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/balance/{{balanceID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "balance",
+                "{{balanceID}}"
+              ]
+            },
+            "description": "Menghapus balance berdasarkan ID.\n\n> Karena skema database pakai `ON DELETE RESTRICT`, request ini akan **gagal dengan error dari database** kalau balance ini masih punya transaksi yang menempel (`transactions.balance_id`). Ini memang perilaku yang diharapkan untuk aplikasi finansial — riwayat transaksi tidak boleh hilang begitu saja."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Transaction",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/{{transactionID}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "{{transactionID}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ],
+      "description": "Jalankan folder ini TERAKHIR dan MANUAL saja, setelah selesai testing — bukan bagian dari alur otomatis, karena transaksi yang sudah dibuat masih bergantung ke balance ini (foreign key RESTRICT di database akan menolak delete kalau masih ada transaksi terkait)."
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/api/v1"
+    },
+    {
+      "key": "testUsername",
+      "value": ""
+    },
+    {
+      "key": "testEmail",
+      "value": ""
+    },
+    {
+      "key": "testPassword",
+      "value": ""
+    },
+    {
+      "key": "userID",
+      "value": ""
+    },
+    {
+      "key": "balanceID",
+      "value": ""
+    },
+    {
+      "key": "transactionID",
+      "value": ""
+    }
+  ]
+}

@@ -1,10 +1,14 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/toast_notification.dart';
 import 'register_screen.dart';
+import 'email_sent_screen.dart';
+import 'forgot_password_screen.dart';
 import '../app_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -20,6 +24,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
+  /// State untuk menampilkan banner "belum diverifikasi"
+  bool _showVerificationBanner = false;
+  String _unverifiedEmail = '';
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -30,21 +38,98 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final authProvider = context.read<AuthProvider>();
-    final success = await authProvider.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
+    // Reset verification banner saat login baru
+    setState(() => _showVerificationBanner = false);
 
-    if (!mounted) return;
-
-    if (success) {
-      ToastHelper.showSuccess(context, 'Login berhasil! Selamat datang 👋');
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const AppShell()),
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final result = await authProvider.login(
+        _emailController.text.trim(),
+        _passwordController.text,
       );
-    } else {
-      ToastHelper.showError(context, authProvider.errorMessage);
+
+      if (!mounted) return;
+
+      if (result['success'] == true) {
+        ToastHelper.showSuccess(
+          context,
+          result['message'] ?? 'Login berhasil! Selamat datang 👋',
+          title: 'Login Berhasil',
+        );
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AppShell()),
+        );
+      } else if (result['needsVerification'] == true) {
+        // Email belum diverifikasi → tampilkan banner & toast warning
+        final errorMsg = result['message'] ?? authProvider.errorMessage;
+        ToastHelper.showWarning(
+          context,
+          errorMsg.isNotEmpty
+              ? errorMsg
+              : 'Akun Anda belum diverifikasi. Silakan cek email Anda atau kirim ulang.',
+          title: 'Akun Belum Terverifikasi',
+        );
+
+        setState(() {
+          _showVerificationBanner = true;
+          _unverifiedEmail = result['email'] ?? _emailController.text.trim();
+        });
+      } else {
+        // Error biasa (salah password, user tidak terdaftar, server down, dll)
+        final errorMsg = result['message'] ?? authProvider.errorMessage;
+        ToastHelper.showError(
+          context,
+          errorMsg.isNotEmpty
+              ? errorMsg
+              : 'Email atau password salah. Silakan periksa kembali.',
+          title: 'Gagal Masuk',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ToastHelper.showError(
+        context,
+        'Terjadi kesalahan saat memproses login: ${e.toString()}',
+        title: 'Error',
+      );
+    }
+  }
+
+  void _navigateToResendVerification() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EmailSentScreen(
+          email: _unverifiedEmail,
+          fromLogin: true,
+        ),
+      ),
+    );
+  }
+
+  /// Handle Google OAuth login — redirect ke BE endpoint
+  Future<void> _handleGoogleLogin() async {
+    final baseUrl = dotenv.env['API_BASE_URL'] ?? 'http://localhost:8080/api/v1';
+    final googleLoginUrl = '$baseUrl/auth/google/login';
+
+    final uri = Uri.parse(googleLoginUrl);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ToastHelper.showError(
+          context,
+          'Tidak dapat membuka halaman login Google.',
+          title: 'Error',
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ToastHelper.showError(
+        context,
+        'Gagal membuka Google Login: ${e.toString()}',
+        title: 'Error',
+      );
     }
   }
 
@@ -64,7 +149,7 @@ class _LoginScreenState extends State<LoginScreen> {
               width: 350,
               height: 350,
               decoration: BoxDecoration(
-                color: AppColors.primaryAction.withOpacity(0.15),
+                color: AppColors.primaryAction.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
             ),
@@ -76,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen> {
               width: 300,
               height: 300,
               decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.15),
+                color: AppColors.textSecondary.withValues(alpha: 0.15),
                 shape: BoxShape.circle,
               ),
             ),
@@ -96,7 +181,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 80,
                       height: 80,
                       decoration: BoxDecoration(
-                        color: AppColors.primaryAction.withOpacity(0.12),
+                        color: AppColors.primaryAction.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: const Icon(
@@ -124,7 +209,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         color: AppColors.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 32),
+
+                    // Verification Banner (muncul saat login gagal karena belum verifikasi)
+                    if (_showVerificationBanner) _buildVerificationBanner(),
+
+                    const SizedBox(height: 8),
 
                     // Glass Form Card
                     ClipRRect(
@@ -134,10 +224,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Container(
                           padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.45),
+                            color: Colors.white.withValues(alpha: 0.45),
                             borderRadius: BorderRadius.circular(28),
                             border: Border.all(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               width: 1.5,
                             ),
                           ),
@@ -188,7 +278,28 @@ class _LoginScreenState extends State<LoginScreen> {
                                     return null;
                                   },
                                 ),
-                                const SizedBox(height: 28),
+                                const SizedBox(height: 12),
+
+                                // Lupa Password link
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (_) => const ForgotPasswordScreen()),
+                                      );
+                                    },
+                                    child: const Text(
+                                      'Lupa Password?',
+                                      style: TextStyle(
+                                        color: AppColors.primaryAction,
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
 
                                 // Login Button
                                 Consumer<AuthProvider>(
@@ -213,6 +324,69 @@ class _LoginScreenState extends State<LoginScreen> {
                                             ),
                                     );
                                   },
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                // Divider "atau"
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Divider(
+                                        color: AppColors.textSecondary.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                                      child: Text(
+                                        'atau',
+                                        style: TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Divider(
+                                        color: AppColors.textSecondary.withValues(alpha: 0.3),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 20),
+
+                                // Google OAuth Login Button
+                                OutlinedButton.icon(
+                                  onPressed: _handleGoogleLogin,
+                                  icon: Image.network(
+                                    'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
+                                    width: 20,
+                                    height: 20,
+                                    errorBuilder: (context, error, stackTrace) => const Icon(
+                                      Icons.g_mobiledata_rounded,
+                                      size: 24,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  label: const Text(
+                                    'Masuk dengan Google',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 16),
+                                    side: BorderSide(
+                                      color: AppColors.textSecondary.withValues(alpha: 0.3),
+                                      width: 1.5,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
                                 ),
                               ],
                             ),
@@ -252,6 +426,119 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Banner notifikasi yang muncul saat login gagal karena email belum diverifikasi
+  Widget _buildVerificationBanner() {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 400),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) {
+        return Transform.translate(
+          offset: Offset(0, -20 * (1 - value)),
+          child: Opacity(
+            opacity: value,
+            child: child,
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF3E0),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: AppColors.primaryAction.withValues(alpha: 0.3),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryAction.withValues(alpha: 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppColors.primaryAction.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.mark_email_unread_rounded,
+                    color: AppColors.primaryAction,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Email Belum Diverifikasi',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Akun kamu sudah terdaftar, silakan verifikasi email terlebih dahulu.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Close button
+                GestureDetector(
+                  onTap: () => setState(() => _showVerificationBanner = false),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 18,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Resend verification button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: _navigateToResendVerification,
+                icon: const Icon(Icons.send_rounded, size: 16),
+                label: const Text(
+                  'Kirim Ulang Email Verifikasi',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: AppColors.primaryAction,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -21,6 +21,10 @@ dependencies:
   google_fonts: ^6.1.0
   # Formatting (Currency & Date)
   intl: ^0.19.0
+  # URL Strategy (remove hash from Flutter web URLs)
+  url_strategy: ^0.2.0
+  # URL Launcher (open email links)
+  url_launcher: ^6.2.1
 
 dev_dependencies:
   flutter_test:

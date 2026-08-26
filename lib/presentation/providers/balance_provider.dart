@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/models/balance_model.dart';
 import '../../data/services/balance_service.dart';
+import '../../core/network/api_error_handler.dart';
 
 class BalanceProvider extends ChangeNotifier {
   final BalanceService _balanceService = BalanceService();
@@ -22,10 +23,14 @@ class BalanceProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    _balances = await _balanceService.getAllBalances();
-
-    _isLoading = false;
-    notifyListeners();
+    try {
+      _balances = await _balanceService.getAllBalances();
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal memuat data dompet.');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   /// Tambah dompet baru (POST /balance)
@@ -38,17 +43,24 @@ class BalanceProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _balanceService.createBalance(
-      userId: userId,
-      wallet: wallet,
-      type: type,
-    );
+    try {
+      final result = await _balanceService.createBalance(
+        userId: userId,
+        wallet: wallet,
+        type: type,
+      );
 
-    if (result['success'] == true) {
-      await fetchBalances(); // Refresh data
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal membuat dompet';
+      if (result['success'] == true) {
+        await fetchBalances(); // Refresh data
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal membuat dompet';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal membuat dompet.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -66,18 +78,25 @@ class BalanceProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _balanceService.updateBalance(
-      id: id,
-      userId: userId,
-      wallet: wallet,
-      type: type,
-    );
+    try {
+      final result = await _balanceService.updateBalance(
+        id: id,
+        userId: userId,
+        wallet: wallet,
+        type: type,
+      );
 
-    if (result['success'] == true) {
-      await fetchBalances(); // Refresh data
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal mengupdate dompet';
+      if (result['success'] == true) {
+        await fetchBalances(); // Refresh data
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal mengupdate dompet';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal mengupdate dompet.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -90,13 +109,20 @@ class BalanceProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _balanceService.deleteBalance(id);
+    try {
+      final result = await _balanceService.deleteBalance(id);
 
-    if (result['success'] == true) {
-      await fetchBalances(); // Refresh data
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal menghapus dompet';
+      if (result['success'] == true) {
+        await fetchBalances(); // Refresh data
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal menghapus dompet';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal menghapus dompet.');
       _isLoading = false;
       notifyListeners();
       return false;

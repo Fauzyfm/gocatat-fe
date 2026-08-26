@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../models/transaction_model.dart';
 import '../models/summary_model.dart';
 import '../../core/network/api_client.dart';
+import '../../core/network/api_error_handler.dart';
 
 class TransactionService {
   final Dio _dio = ApiClient().dio;
@@ -24,19 +25,27 @@ class TransactionService {
         'category': category,
         'description': description,
       });
+
+      final isSuccess = response.data is Map ? (response.data['success'] ?? true) : true;
+      final message = response.data is Map
+          ? (response.data['messagge'] ?? response.data['message'] ?? 'Transaksi berhasil dicatat!')
+          : 'Transaksi berhasil dicatat!';
+
       return {
-        'success': response.data['success'] ?? false,
-        'message': response.data['messagge'] ?? response.data['message'] ?? '',
-        'data': response.data['data'] != null
+        'success': isSuccess,
+        'message': message,
+        'data': (response.data is Map && response.data['data'] != null)
             ? Transaction.fromJson(response.data['data'])
             : null,
       };
-    } on DioException catch (e) {
+    } catch (e) {
+      final errorMessage = ApiErrorHandler.extractMessage(
+        e,
+        fallbackMessage: 'Gagal mencatat transaksi.',
+      );
       return {
         'success': false,
-        'message': e.response?.data?['message'] ??
-            e.response?.data?['messagge'] ??
-            'Gagal mencatat transaksi.',
+        'message': errorMessage,
       };
     }
   }
@@ -70,7 +79,7 @@ class TransactionService {
       }
 
       final response = await _dio.get('/transaction', queryParameters: queryParams);
-      if (response.data['success'] == true && response.data['data'] != null) {
+      if (response.data is Map && response.data['success'] == true && response.data['data'] != null) {
         final resData = response.data['data'];
         List<Transaction> transactions = [];
         int currentPage = page;
@@ -104,7 +113,7 @@ class TransactionService {
         'totalPages': 1,
         'totalItems': 0,
       };
-    } catch (e) {
+    } catch (_) {
       return {
         'success': false,
         'transactions': <Transaction>[],
@@ -119,11 +128,11 @@ class TransactionService {
   Future<Transaction?> getTransactionById(int id) async {
     try {
       final response = await _dio.get('/transaction/$id');
-      if (response.data['success'] == true && response.data['data'] != null) {
+      if (response.data is Map && response.data['success'] == true && response.data['data'] != null) {
         return Transaction.fromJson(response.data['data']);
       }
       return null;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
@@ -138,11 +147,11 @@ class TransactionService {
         'start_date': startDate,
         'end_date': endDate,
       });
-      if (response.data['success'] == true && response.data['data'] != null) {
+      if (response.data is Map && response.data['success'] == true && response.data['data'] != null) {
         return Summary.fromJson(response.data['data']);
       }
       return Summary.empty();
-    } catch (e) {
+    } catch (_) {
       return Summary.empty();
     }
   }
@@ -166,16 +175,24 @@ class TransactionService {
         'category': category,
         'description': description,
       });
+
+      final isSuccess = response.data is Map ? (response.data['success'] ?? true) : true;
+      final message = response.data is Map
+          ? (response.data['messagge'] ?? response.data['message'] ?? 'Transaksi berhasil diupdate!')
+          : 'Transaksi berhasil diupdate!';
+
       return {
-        'success': response.data['success'] ?? false,
-        'message': response.data['messagge'] ?? response.data['message'] ?? 'Transaksi berhasil diupdate!',
+        'success': isSuccess,
+        'message': message,
       };
-    } on DioException catch (e) {
+    } catch (e) {
+      final errorMessage = ApiErrorHandler.extractMessage(
+        e,
+        fallbackMessage: 'Gagal mengupdate transaksi.',
+      );
       return {
         'success': false,
-        'message': e.response?.data?['message'] ??
-            e.response?.data?['messagge'] ??
-            'Gagal mengupdate transaksi.',
+        'message': errorMessage,
       };
     }
   }
@@ -184,16 +201,24 @@ class TransactionService {
   Future<Map<String, dynamic>> deleteTransaction(int id) async {
     try {
       final response = await _dio.delete('/transaction/$id');
+
+      final isSuccess = response.data is Map ? (response.data['success'] ?? true) : true;
+      final message = response.data is Map
+          ? (response.data['messagge'] ?? response.data['message'] ?? 'Transaksi berhasil dihapus!')
+          : 'Transaksi berhasil dihapus!';
+
       return {
-        'success': response.data['success'] ?? false,
-        'message': response.data['messagge'] ?? response.data['message'] ?? 'Transaksi berhasil dihapus!',
+        'success': isSuccess,
+        'message': message,
       };
-    } on DioException catch (e) {
+    } catch (e) {
+      final errorMessage = ApiErrorHandler.extractMessage(
+        e,
+        fallbackMessage: 'Gagal menghapus transaksi.',
+      );
       return {
         'success': false,
-        'message': e.response?.data?['message'] ??
-            e.response?.data?['messagge'] ??
-            'Gagal menghapus transaksi.',
+        'message': errorMessage,
       };
     }
   }

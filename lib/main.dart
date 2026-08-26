@@ -2,17 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:url_strategy/url_strategy.dart';
 import 'core/theme/app_theme.dart';
 import 'presentation/providers/auth_provider.dart';
 import 'presentation/providers/balance_provider.dart';
 import 'presentation/providers/transaction_provider.dart';
 import 'presentation/screens/login_screen.dart';
+import 'presentation/screens/verify_email_screen.dart';
+import 'presentation/screens/change_password_screen.dart';
+import 'presentation/widgets/toast_notification.dart';
 import 'presentation/app_shell.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('id_ID', null);
   
+  // Hapus hash (#) dari URL Flutter web
+  // Supaya /verify?token=xxx bisa diakses langsung dari email
+  setPathUrlStrategy();
+
   // Load konfigurasi dari file .env (jika ada)
   try {
     await dotenv.load(fileName: ".env");
@@ -37,8 +45,36 @@ class GoCatatApp extends StatelessWidget {
       child: MaterialApp(
         title: 'GoCatat - Manajemen Keuangan',
         debugShowCheckedModeBanner: false,
+        scaffoldMessengerKey: ToastHelper.messengerKey,
         theme: AppTheme.lightTheme,
-        home: const _AuthGate(),
+        // Gunakan onGenerateRoute untuk menangkap URL /verify?token=xxx dan /change-password?token=xxx
+        onGenerateRoute: (settings) {
+          final uri = Uri.parse(settings.name ?? '/');
+
+          // Route: /verify?token=xxx
+          if (uri.path == '/verify') {
+            final token = uri.queryParameters['token'] ?? '';
+            return MaterialPageRoute(
+              builder: (_) => VerifyEmailScreen(token: token),
+              settings: settings,
+            );
+          }
+
+          // Route: /change-password?token=xxx
+          if (uri.path == '/change-password') {
+            final token = uri.queryParameters['token'] ?? '';
+            return MaterialPageRoute(
+              builder: (_) => ChangePasswordScreen(token: token),
+              settings: settings,
+            );
+          }
+
+          // Default route: AuthGate
+          return MaterialPageRoute(
+            builder: (_) => const _AuthGate(),
+            settings: settings,
+          );
+        },
       ),
     );
   }

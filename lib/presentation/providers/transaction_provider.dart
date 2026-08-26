@@ -3,6 +3,7 @@ import '../../data/models/transaction_model.dart';
 import '../../data/models/summary_model.dart';
 import '../../data/services/transaction_service.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/network/api_error_handler.dart';
 
 class TransactionProvider extends ChangeNotifier {
   final TransactionService _transactionService = TransactionService();
@@ -50,61 +51,76 @@ class TransactionProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    if (resetFilter) {
-      _selectedCategory = null;
-      _selectedType = null;
-      _selectedStartDate = null;
-      _selectedEndDate = null;
-      _currentPage = 1;
-    } else {
-      if (page != null) _currentPage = page;
-      if (limit != null) _limit = limit;
-      if (category != null) _selectedCategory = category.isEmpty ? null : category;
-      if (type != null) _selectedType = type.isEmpty ? null : type;
-      if (startDate != null) _selectedStartDate = startDate.isEmpty ? null : startDate;
-      if (endDate != null) _selectedEndDate = endDate.isEmpty ? null : endDate;
-    }
+    try {
+      if (resetFilter) {
+        _selectedCategory = null;
+        _selectedType = null;
+        _selectedStartDate = null;
+        _selectedEndDate = null;
+        _currentPage = 1;
+      } else {
+        if (page != null) _currentPage = page;
+        if (limit != null) _limit = limit;
+        if (category != null) _selectedCategory = category.isEmpty ? null : category;
+        if (type != null) _selectedType = type.isEmpty ? null : type;
+        if (startDate != null) _selectedStartDate = startDate.isEmpty ? null : startDate;
+        if (endDate != null) _selectedEndDate = endDate.isEmpty ? null : endDate;
+      }
 
-    final result = await _transactionService.getAllTransactions(
-      page: _currentPage,
-      limit: _limit,
-      category: _selectedCategory,
-      type: _selectedType,
-      startDate: _selectedStartDate,
-      endDate: _selectedEndDate,
-    );
+      final result = await _transactionService.getAllTransactions(
+        page: _currentPage,
+        limit: _limit,
+        category: _selectedCategory,
+        type: _selectedType,
+        startDate: _selectedStartDate,
+        endDate: _selectedEndDate,
+      );
 
-    if (result['success'] == true) {
-      _transactions = result['transactions'] as List<Transaction>;
-      _currentPage = result['page'] as int? ?? _currentPage;
-      _totalPages = result['totalPages'] as int? ?? 1;
-      _totalItems = result['totalItems'] as int? ?? _transactions.length;
-    } else {
+      if (result['success'] == true) {
+        _transactions = result['transactions'] as List<Transaction>;
+        _currentPage = result['page'] as int? ?? _currentPage;
+        _totalPages = result['totalPages'] as int? ?? 1;
+        _totalItems = result['totalItems'] as int? ?? _transactions.length;
+      } else {
+        _transactions = [];
+        _totalPages = 1;
+        _totalItems = 0;
+      }
+    } catch (e) {
       _transactions = [];
-      _totalPages = 1;
-      _totalItems = 0;
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal memuat transaksi.');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-
-    _isLoading = false;
-    notifyListeners();
   }
 
   /// Ambil ringkasan bulan ini (GET /transaction/summary)
   Future<void> fetchSummary() async {
-    _summary = await _transactionService.getSummary(
-      startDate: DateFormatter.startOfMonthForApi(),
-      endDate: DateFormatter.endOfMonthForApi(),
-    );
-    notifyListeners();
+    try {
+      _summary = await _transactionService.getSummary(
+        startDate: DateFormatter.startOfMonthForApi(),
+        endDate: DateFormatter.endOfMonthForApi(),
+      );
+    } catch (_) {
+      _summary = Summary.empty();
+    } finally {
+      notifyListeners();
+    }
   }
 
   /// Ambil ringkasan tahun ini
   Future<void> fetchYearlySummary() async {
-    _summary = await _transactionService.getSummary(
-      startDate: DateFormatter.startOfYearForApi(),
-      endDate: DateFormatter.endOfYearForApi(),
-    );
-    notifyListeners();
+    try {
+      _summary = await _transactionService.getSummary(
+        startDate: DateFormatter.startOfYearForApi(),
+        endDate: DateFormatter.endOfYearForApi(),
+      );
+    } catch (_) {
+      _summary = Summary.empty();
+    } finally {
+      notifyListeners();
+    }
   }
 
   /// Catat transaksi baru (POST /transaction)
@@ -120,21 +136,28 @@ class TransactionProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _transactionService.createTransaction(
-      userId: userId,
-      balanceId: balanceId,
-      type: type,
-      amount: amount,
-      category: category,
-      description: description,
-    );
+    try {
+      final result = await _transactionService.createTransaction(
+        userId: userId,
+        balanceId: balanceId,
+        type: type,
+        amount: amount,
+        category: category,
+        description: description,
+      );
 
-    if (result['success'] == true) {
-      await fetchTransactions(page: 1);
-      await fetchSummary();
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal mencatat transaksi';
+      if (result['success'] == true) {
+        await fetchTransactions(page: 1);
+        await fetchSummary();
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal mencatat transaksi';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal mencatat transaksi.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -155,22 +178,29 @@ class TransactionProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _transactionService.updateTransaction(
-      id: id,
-      userId: userId,
-      balanceId: balanceId,
-      type: type,
-      amount: amount,
-      category: category,
-      description: description,
-    );
+    try {
+      final result = await _transactionService.updateTransaction(
+        id: id,
+        userId: userId,
+        balanceId: balanceId,
+        type: type,
+        amount: amount,
+        category: category,
+        description: description,
+      );
 
-    if (result['success'] == true) {
-      await fetchTransactions();
-      await fetchSummary();
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal mengupdate transaksi';
+      if (result['success'] == true) {
+        await fetchTransactions();
+        await fetchSummary();
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal mengupdate transaksi';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal mengupdate transaksi.');
       _isLoading = false;
       notifyListeners();
       return false;
@@ -183,14 +213,21 @@ class TransactionProvider extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    final result = await _transactionService.deleteTransaction(id);
+    try {
+      final result = await _transactionService.deleteTransaction(id);
 
-    if (result['success'] == true) {
-      await fetchTransactions();
-      await fetchSummary();
-      return true;
-    } else {
-      _errorMessage = result['message'] ?? 'Gagal menghapus transaksi';
+      if (result['success'] == true) {
+        await fetchTransactions();
+        await fetchSummary();
+        return true;
+      } else {
+        _errorMessage = result['message'] ?? 'Gagal menghapus transaksi';
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = ApiErrorHandler.extractMessage(e, fallbackMessage: 'Gagal menghapus transaksi.');
       _isLoading = false;
       notifyListeners();
       return false;

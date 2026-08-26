@@ -4,60 +4,47 @@ import 'package:provider/provider.dart';
 import '../../core/theme/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/toast_notification.dart';
-import 'email_sent_screen.dart';
+import 'forgot_password_sent_screen.dart';
 
-class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({Key? key}) : super(key: key);
+/// Halaman "Lupa Password" — input email untuk request link reset password
+class ForgotPasswordScreen extends StatefulWidget {
+  const ForgotPasswordScreen({Key? key}) : super(key: key);
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-  bool _obscurePassword = true;
-  bool _obscureConfirm = true;
 
   @override
   void dispose() {
-    _usernameController.dispose();
     _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleRegister() async {
+  Future<void> _handleSubmit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    final email = _emailController.text.trim();
 
     try {
       final authProvider = context.read<AuthProvider>();
-      final result = await authProvider.register(
-        _usernameController.text.trim(),
-        _emailController.text.trim(),
-        _passwordController.text,
-        _confirmPasswordController.text,
-      );
+      final result = await authProvider.requestChangePassword(email);
 
       if (!mounted) return;
 
       if (result['success'] == true) {
         ToastHelper.showSuccess(
           context,
-          result['message'] ?? 'Registrasi berhasil! Silakan periksa email Anda untuk verifikasi.',
-          title: 'Registrasi Berhasil',
+          result['message'] ?? 'Link reset password telah dikirim ke email Anda.',
+          title: 'Email Terkirim',
         );
 
-        // Navigasi ke halaman "Cek Email" untuk verifikasi
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => EmailSentScreen(
-              email: result['email'] ?? _emailController.text.trim(),
-            ),
+            builder: (_) => ForgotPasswordSentScreen(email: email),
           ),
         );
       } else {
@@ -66,15 +53,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           context,
           errorMsg.isNotEmpty
               ? errorMsg
-              : 'Registrasi gagal. Silakan periksa kembali data yang dimasukkan.',
-          title: 'Gagal Mendaftar',
+              : 'Gagal mengirim email reset password. Pastikan email terdaftar.',
+          title: 'Gagal',
         );
       }
     } catch (e) {
       if (!mounted) return;
       ToastHelper.showError(
         context,
-        'Terjadi kesalahan saat memproses registrasi: ${e.toString()}',
+        'Terjadi kesalahan: ${e.toString()}',
         title: 'Error',
       );
     }
@@ -90,11 +77,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           // Background decorative circles
           Positioned(
-            top: -80,
-            left: -100,
+            top: -100,
+            right: -60,
             child: Container(
-              width: 300,
-              height: 300,
+              width: 320,
+              height: 320,
               decoration: BoxDecoration(
                 color: AppColors.primaryAction.withValues(alpha: 0.12),
                 shape: BoxShape.circle,
@@ -103,7 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           Positioned(
             bottom: -120,
-            right: -80,
+            left: -80,
             child: Container(
               width: 350,
               height: 350,
@@ -124,7 +111,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   children: [
                     const SizedBox(height: 60),
 
-                    // Header
+                    // Icon
                     Container(
                       width: 80,
                       height: 80,
@@ -133,14 +120,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         borderRadius: BorderRadius.circular(24),
                       ),
                       child: const Icon(
-                        Icons.person_add_rounded,
+                        Icons.lock_reset_rounded,
                         size: 40,
                         color: AppColors.primaryAction,
                       ),
                     ),
                     const SizedBox(height: 24),
+
                     const Text(
-                      'Buat Akun Baru',
+                      'Lupa Password?',
                       style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w700,
@@ -150,11 +138,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Mulai catat keuanganmu dengan GoCatat',
+                      'Masukkan email yang terdaftar, kami akan mengirimkan link untuk mengatur ulang password kamu.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 14,
                         color: AppColors.textSecondary,
+                        height: 1.5,
                       ),
                     ),
                     const SizedBox(height: 36),
@@ -180,20 +169,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 TextFormField(
-                                  controller: _usernameController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Nama Lengkap',
-                                    prefixIcon: Icon(Icons.person_outline),
-                                  ),
-                                  validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
-                                      return 'Nama tidak boleh kosong';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 18),
-                                TextFormField(
                                   controller: _emailController,
                                   keyboardType: TextInputType.emailAddress,
                                   decoration: const InputDecoration(
@@ -210,69 +185,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                     return null;
                                   },
                                 ),
-                                const SizedBox(height: 18),
-                                TextFormField(
-                                  controller: _passwordController,
-                                  obscureText: _obscurePassword,
-                                  decoration: InputDecoration(
-                                    labelText: 'Password',
-                                    prefixIcon: const Icon(Icons.lock_outline),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscurePassword
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                      ),
-                                      onPressed: () {
-                                        setState(() => _obscurePassword = !_obscurePassword);
-                                      },
-                                    ),
-                                  ),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Password tidak boleh kosong';
-                                    }
-                                    if (value.length < 8) {
-                                      return 'Password minimal 8 karakter';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 18),
-                                TextFormField(
-                                  controller: _confirmPasswordController,
-                                  obscureText: _obscureConfirm,
-                                  decoration: InputDecoration(
-                                    labelText: 'Konfirmasi Password',
-                                    prefixIcon: const Icon(Icons.lock_outline),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _obscureConfirm
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_outlined,
-                                      ),
-                                      onPressed: () {
-                                        setState(() => _obscureConfirm = !_obscureConfirm);
-                                      },
-                                    ),
-                                  ),
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Konfirmasi password tidak boleh kosong';
-                                    }
-                                    if (value != _passwordController.text) {
-                                      return 'Konfirmasi password tidak cocok';
-                                    }
-                                    return null;
-                                  },
-                                ),
                                 const SizedBox(height: 28),
 
-                                // Register Button
+                                // Submit Button
                                 Consumer<AuthProvider>(
                                   builder: (context, auth, child) {
                                     return ElevatedButton(
-                                      onPressed: auth.isLoading ? null : _handleRegister,
+                                      onPressed: auth.isLoading ? null : _handleSubmit,
                                       style: ElevatedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(vertical: 18),
                                       ),
@@ -286,7 +205,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                               ),
                                             )
                                           : const Text(
-                                              'Daftar',
+                                              'Kirim Link Reset',
                                               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                                             ),
                                     );
@@ -300,24 +219,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     ),
 
                     const SizedBox(height: 28),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Sudah punya akun? ',
-                          style: TextStyle(color: AppColors.textSecondary),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.of(context).pop(),
-                          child: const Text(
-                            'Masuk',
+
+                    // Back to login
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).pop(),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.arrow_back_rounded,
+                            size: 16,
+                            color: AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Kembali ke Halaman Login',
                             style: TextStyle(
-                              color: AppColors.primaryAction,
-                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 40),
                   ],

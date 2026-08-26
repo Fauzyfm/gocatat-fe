@@ -63,7 +63,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"username\": \"Fachrul Fauzy Muzafar\",\n    \"email\": \"arul9723@gmail.com\",\n    \"password\": \"12345678\",\n    \"confirm_password\": \"12345678\",\n    \"role\": \"user\"\n}"
+              "raw": "{\n    \"username\": \"Muzafar\",\n    \"email\": \"fachrulfauzy23@gmail.com\",\n    \"password\": \"12345678\",\n    \"confirm_password\": \"12345678\",\n    \"role\": \"user\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/register",
@@ -113,7 +113,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"email\": \"arul9723@gmail.com\",\n    \"password\": \"12345678\"\n}\n\n"
+              "raw": "{\n    \"email\": \"fachrulfauzy23@gmail.com\",\n    \"password\": \"12345678\"\n}\n\n"
             },
             "url": {
               "raw": "{{baseUrl}}/auth/login",
@@ -142,6 +142,67 @@
               "path": [
                 "auth",
                 "logout"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Resend-Verification",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    email: \"\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/resend-verification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "resend-verification"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify-Email",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{json_web_token_14vo}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify?token={{json_web_token_187m}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{json_web_token_187m}}"
+                }
               ]
             }
           },
@@ -629,6 +690,30 @@
       "description": "Jalankan folder ini TERAKHIR dan MANUAL saja, setelah selesai testing — bukan bagian dari alur otomatis, karena transaksi yang sudah dibuat masih bergantung ke balance ini (foreign key RESTRICT di database akan menolak delete kalau masih ada transaksi terkait)."
     }
   ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
   "variable": [
     {
       "key": "baseUrl",
@@ -656,6 +741,10 @@
     },
     {
       "key": "transactionID",
+      "value": ""
+    },
+    {
+      "key": "token_verification_email",
       "value": ""
     }
   ]
